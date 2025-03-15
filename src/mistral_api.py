@@ -36,17 +36,15 @@ def generate_mistral_response(prompt):
         logger.info("Question sur le créateur détectée. Réponse personnalisée envoyée.")
         return "J'ai été créé par Djamaldine Montana avec l'aide de Mistral. C'est un développeur talentueux qui m'a conçu pour aider les gens comme vous !"
     
+    # Vérifier si la clé API est définie
+    if not MISTRAL_API_KEY:
+        logger.error("Erreur: MISTRAL_API_KEY n'est pas définie")
+        return "Je suis désolé, mais je ne peux pas répondre pour le moment car ma configuration n'est pas complète. Veuillez contacter l'administrateur."
+    
     try:
-        # Définir un timeout
-        def timeout_handler(signum, frame):
-            logger.warning("Timeout atteint pour la requête Mistral")
-            raise TimeoutError("La requête a pris trop de temps")
-        
-        # Configurer le timeout à 50 secondes
-        signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(50)
-        
         logger.info("Envoi de la requête à l'API Mistral...")
+        
+        # Utiliser requests avec timeout au lieu de signal (qui peut ne pas fonctionner sur Vercel)
         response = requests.post(
             "https://api.mistral.ai/v1/chat/completions",
             headers={
@@ -57,34 +55,45 @@ def generate_mistral_response(prompt):
                 "model": "mistral-large-latest",
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": 1000
-            }
+            },
+            timeout=45  # 45 secondes de timeout
         )
-        
-        # Désactiver le timeout
-        signal.alarm(0)
         
         logger.info(f"Réponse reçue de l'API Mistral. Status: {response.status_code}")
         
+        # Log du corps de la réponse pour le débogage
+        response_text = response.text
+        logger.info(f"Corps de la réponse: {response_text[:500]}...")
+        
         if response.status_code != 200:
-            error_body = response.text
-            logger.error(f"Erreur API Mistral: {response.status_code} - {error_body}")
-            raise Exception(f"HTTP error! status: {response.status_code}")
+            logger.error(f"Erreur API Mistral: {response.status_code} - {response_text}")
+            return f"Désolé, l'API Mistral a retourné une erreur (code {response.status_code}). Veuillez réessayer plus tard."
         
-        data = response.json()
-        logger.info(f"Données reçues de l'API Mistral: {json.dumps(data)}")
-        
-        generated_response = data['choices'][0]['message']['content']
-        
-        if len(generated_response) > 4000:
-            generated_response = generated_response[:4000] + "... (réponse tronquée)"
-        
-        logger.info(f"Réponse générée: {generated_response}")
-        return generated_response
-    except TimeoutError:
-        logger.error("Erreur de timeout lors de la génération de la réponse Mistral")
+        try:
+            data = response.json()
+            logger.info("Réponse JSON analysée avec succès")
+            
+            if 'choices' not in data or len(data['choices']) == 0:
+                logger.error(f"Format de réponse inattendu: {data}")
+                return "Désolé, j'ai reçu une réponse dans un format inattendu. Veuillez réessayer."
+            
+            generated_response = data['choices'][0]['message']['content']
+            
+            if len(generated_response) > 4000:
+                generated_response = generated_response[:4000] + "... (réponse tronquée)"
+            
+            logger.info(f"Réponse générée: {generated_response[:100]}...")
+            return generated_response
+        except ValueError as e:
+            logger.error(f"Erreur lors de l'analyse JSON: {str(e)}")
+            return "Désolé, j'ai rencontré une erreur lors du traitement de la réponse. Veuillez réessayer."
+            
+    except requests.exceptions.Timeout:
+        logger.error("Timeout lors de la requête à l'API Mistral")
         return "Désolé, la génération de la réponse a pris trop de temps. Veuillez réessayer avec une question plus courte ou plus simple."
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Erreur de requête HTTP: {str(e)}")
+        return "Désolé, je n'ai pas pu me connecter à l'API Mistral. Veuillez vérifier votre connexion et réessayer."
     except Exception as e:
-        logger.error(f"Erreur détaillée lors de la génération de la réponse Mistral: {str(e)}")
-        if isinstance(e, TimeoutError) or "timeout" in str(e):
-            return "Désolé, la génération de la réponse a pris trop de temps. Veuillez réessayer avec une question plus courte ou plus simple."
-        return "Je suis désolé, mais je ne peux pas répondre pour le moment. Veuillez réessayer plus tard."
+        logger.error(f"Erreur inattendue: {str(e)}", exc_info=True)
+        return "Je suis désolé, mais j'ai rencontré une erreur inattendue. Veuillez réessayer plus tard."
