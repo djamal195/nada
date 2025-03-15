@@ -1,0 +1,9 @@
+ 
+flask==2.0.1
+python-dotenv==0.19.0
+requests==2.26.0
+pymongo==4.0.1
+google-api-python-client==2.19.1
+mistralai==0.0.7
+cloudinary==1.33.0
+yt-dlp==2023.3.4
