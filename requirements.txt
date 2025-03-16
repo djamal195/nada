@@ -6,3 +6,4 @@ google-api-python-client>=2.70.0
 mistralai>=0.0.7
 cloudinary>=1.33.0
 yt-dlp>=2023.3.4
+requests-toolbelt>=0.10.1
