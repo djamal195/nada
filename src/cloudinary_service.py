@@ -1,46 +1,52 @@
-# Dans src/cloudinary_service.py
-def upload_video_with_auto_delete(video_data, public_id):
+# src/cloudinary_service.py
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
+import os
+import logging
+from src.config import CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
+
+logger = logging.getLogger(__name__)
+
+# Configuration de Cloudinary
+cloudinary.config(
+    cloud_name=CLOUDINARY_CLOUD_NAME,
+    api_key=CLOUDINARY_API_KEY,
+    api_secret=CLOUDINARY_API_SECRET
+)
+
+def upload_video(file_path, public_id):
     """
-    Télécharge une vidéo vers Cloudinary avec suppression automatique après 1 heure
+    Télécharge une vidéo vers Cloudinary
+    
+    Args:
+        file_path: Chemin du fichier vidéo ou objet BytesIO
+        public_id: ID public pour la vidéo
+        
+    Returns:
+        dict: Informations sur la vidéo téléchargée ou None en cas d'erreur
     """
     try:
         logger.info(f"Téléchargement de la vidéo vers Cloudinary...")
-        
-        # Convertir en BytesIO si nécessaire
-        if isinstance(video_data, bytes):
-            video_data = io.BytesIO(video_data)
-        
-        # Télécharger avec un tag pour la suppression automatique
         result = cloudinary.uploader.upload(
-            video_data,
+            file_path,
             resource_type="video",
             public_id=public_id,
             overwrite=True,
             format="mp4",
-            tags=["auto_delete"],
             transformation=[
                 {"width": 320, "crop": "scale"},
                 {"quality": "auto:low"},
                 {"duration": 60}  # Limiter à 60 secondes
             ]
         )
-        
         logger.info(f"Vidéo téléchargée avec succès: {result['url']}")
-        
-        # Programmer la suppression après 1 heure
-        import threading
-        def delete_after_delay():
-            import time
-            time.sleep(3600)  # 1 heure
-            try:
-                cloudinary.uploader.destroy(public_id, resource_type="video")
-                logger.info(f"Vidéo {public_id} supprimée automatiquement")
-            except Exception as e:
-                logger.error(f"Erreur lors de la suppression automatique: {str(e)}")
-        
-        threading.Thread(target=delete_after_delay).start()
-        
         return result
     except Exception as e:
         logger.error(f"Erreur lors du téléchargement vers Cloudinary: {str(e)}")
         return None
+    finally:
+        # Supprimer le fichier temporaire si c'est un chemin de fichier
+        if isinstance(file_path, str) and os.path.exists(file_path):
+            os.remove(file_path)
+            logger.info(f"Fichier temporaire supprimé: {file_path}")
